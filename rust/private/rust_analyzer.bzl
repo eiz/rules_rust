@@ -39,9 +39,7 @@ RustAnalyzerInfo = provider(
 )
 
 def _rust_analyzer_aspect_impl(target, ctx):
-    if rust_common.crate_info not in target:
-        return []
-
+    is_rust = rust_common.crate_info in target
     toolchain = find_toolchain(ctx)
 
     # Always add test & debug_assertions (like here:
@@ -66,14 +64,14 @@ def _rust_analyzer_aspect_impl(target, ctx):
 
     transitive_deps = depset(direct = dep_infos, order = "postorder", transitive = [dep.transitive_deps for dep in dep_infos])
 
-    crate_info = target[rust_common.crate_info]
+    crate_info = target[rust_common.crate_info] if is_rust else None
     return [RustAnalyzerInfo(
         crate = crate_info,
         cfgs = cfgs,
         env = getattr(ctx.rule.attr, "rustc_env", {}),
         deps = dep_infos,
         transitive_deps = transitive_deps,
-        proc_macro_dylib_path = find_proc_macro_dylib_path(toolchain, target),
+        proc_macro_dylib_path = find_proc_macro_dylib_path(toolchain, target) if is_rust else None,
         build_info = build_info,
     )]
 
@@ -176,7 +174,7 @@ def _create_crate(ctx, infos, crate_mapping):
         (crate_mapping[_crate_id(dep.crate)], dep.crate.name): None
         for info in infos
         for dep in info.deps
-        if dep.crate.name != crate_name
+        if dep.crate != None and dep.crate.name != crate_name
     }.keys()
 
     crate["deps"] = [{"crate": d[0], "name": d[1]} for d in deps]
@@ -221,6 +219,8 @@ def _rust_analyzer_impl(ctx):
             transitive = [target[RustAnalyzerInfo].transitive_deps],
             order = "postorder",
         ).to_list():
+            if info.crate == None:
+                continue
             crate_id = _crate_id(info.crate)
             if crate_id not in crate_mapping:
                 crate_mapping[crate_id] = idx
